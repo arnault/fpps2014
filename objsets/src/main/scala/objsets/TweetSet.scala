@@ -43,6 +43,7 @@ abstract class TweetSet {
    * and be implemented in the subclasses?
    */
   def filter(p: Tweet => Boolean): TweetSet = filterAcc(p, new Empty)
+
   /**
    * This is a helper method for `filter` that propagetes the accumulated tweets.
    */
@@ -50,24 +51,14 @@ abstract class TweetSet {
 
   /**
    * Returns a new `TweetSet` that is the union of `TweetSet`s `this` and `that`.
-   *
-   * Question: Should we implment this method here, or should it remain abstract
-   * and be implemented in the subclasses?
    */
    def union(that: TweetSet): TweetSet
-    	
-  
 
-  /*
+  /**
    * Returns the tweet from this set which has the greatest retweet count.
-   *
-   * Calling `mostRetweeted` on an empty set should throw an exception of
-   * type `java.util.NoSuchElementException`.
-   *
-   * Question: Should we implment this method here, or should it remain abstract
-   * and be implemented in the subclasses?
    */
-  def mostRetweeted: Tweet 
+  def mostRetweeted: Tweet
+
   /**
    * Returns a list containing all tweets of this set, sorted by retweet count
    * in descending order. In other words, the head of the resulting list should
@@ -77,9 +68,8 @@ abstract class TweetSet {
    * Question: Should we implment this method here, or should it remain abstract
    * and be implemented in the subclasses?
    */
-  def descendingByRetweet: TweetList 
+  def descendingByRetweet: TweetList
 
-  def _mostRetweeted(newTweet: Tweet): Tweet
   /**
    * The following methods are already implemented
    */
@@ -106,17 +96,31 @@ abstract class TweetSet {
    * This method takes a function and applies it to every element in the set.
    */
   def foreach(f: Tweet => Unit): Unit
+
+  val elemsCount: Int
 }
 
 class Empty extends TweetSet {
 
   def filterAcc(p: Tweet => Boolean, acc: TweetSet): TweetSet = acc
-  
+
+  /**
+   * Returns a new `TweetSet` that is the union of `TweetSet`s `this` and `that`.
+   */
   def union(that: TweetSet): TweetSet = that
-  
-  def mostRetweeted: Tweet = throw new Exception()
-  def _mostRetweeted(newTweet: Tweet): Tweet = newTweet
-  def descendingByRetweet: TweetList = throw new Exception()
+
+  /**
+   * Returns the tweet from this set which has the greatest retweet count.
+   */
+  def mostRetweeted: Tweet = throw new NoSuchElementException("Empty.mostRetweeted")
+
+  /**
+   * Returns a list containing all tweets of this set, sorted by retweet count
+   * in descending order. In other words, the head of the resulting list should
+   * have the highest retweet count.
+   */
+  def descendingByRetweet: TweetList = Nil
+
 
   /**
    * The following methods are already implemented
@@ -129,27 +133,43 @@ class Empty extends TweetSet {
   def remove(tweet: Tweet): TweetSet = this
 
   def foreach(f: Tweet => Unit): Unit = ()
+
+  val elemsCount: Int = 0
 }
 
-class NonEmpty(elem: Tweet, left: TweetSet, right: TweetSet) extends TweetSet  {
+class NonEmpty(elem: Tweet, left: TweetSet, right: TweetSet) extends TweetSet {
 
-  def filterAcc(p: Tweet => Boolean, acc: TweetSet):  TweetSet = right.filterAcc(p, left.filterAcc(p, if (p(elem)) acc.incl(elem) else acc))
-  
-  
+  def filterAcc(p: Tweet => Boolean, acc: TweetSet): TweetSet =
+    left.filterAcc(p, right.filterAcc(p, if (p(elem)) acc.incl(elem) else acc))
+
+  /**
+   * Returns a new `TweetSet` that is the union of `TweetSet`s `this` and `that`.
+   */
   def union(that: TweetSet): TweetSet = left.union(right.union(that)).incl(elem)
-  
-  def _mostRetweeted(newTweet: Tweet): Tweet = {
-      right._mostRetweeted(left._mostRetweeted(if (elem.retweets > newTweet.retweets) elem else newTweet))
-   }
+
+  /**
+   * Returns the tweet from this set which has the greatest retweet count.
+   */
   def mostRetweeted: Tweet = {
-    
-    _mostRetweeted(elem)
+    val maxleft = if (left.elemsCount != 0) {
+      val mostleft = left.mostRetweeted
+      if (mostleft.retweets > elem.retweets) mostleft else elem
+    } else elem
+
+    if (right.elemsCount != 0) {
+      val mostright = right.mostRetweeted
+      if (mostright.retweets > maxleft.retweets) mostright else maxleft
+    }
+    else maxleft
   }
-  
+
+  /**
+   * Returns a list containing all tweets of this set, sorted by retweet count
+   * in descending order. In other words, the head of the resulting list should
+   * have the highest retweet count.
+   */
   def descendingByRetweet: TweetList = new Cons (mostRetweeted, remove(mostRetweeted)descendingByRetweet)
 
-
-    
   /**
    * The following methods are already implemented
    */
@@ -175,6 +195,8 @@ class NonEmpty(elem: Tweet, left: TweetSet, right: TweetSet) extends TweetSet  {
     left.foreach(f)
     right.foreach(f)
   }
+
+  val elemsCount: Int = 1 + left.elemsCount + right.elemsCount
 }
 
 trait TweetList {
@@ -203,14 +225,21 @@ object GoogleVsApple {
   val google = List("android", "Android", "galaxy", "Galaxy", "nexus", "Nexus")
   val apple = List("ios", "iOS", "iphone", "iPhone", "ipad", "iPad")
 
-  lazy val googleTweets: TweetSet = TweetReader.allTweets.filter(tweet => google.exists(t => tweet.text.contains(t)))
-  lazy val appleTweets: TweetSet = TweetReader.allTweets.filter(tweet => apple.exists(t => tweet.text.contains(t)))
+  lazy val googleTweets: TweetSet = TweetReader.allTweets.filter { t =>
+    google.exists(g => t.text.contains(g))
+  }
 
+  lazy val appleTweets: TweetSet = TweetReader.allTweets.filter { t =>
+    apple.exists(a => t.text.contains(a))
+  }
+  lazy val trending: TweetList = googleTweets.union(appleTweets).descendingByRetweet
+  
   /**
    * A list of all tweets mentioning a keyword from either apple or google,
    * sorted by the number of retweets.
    */
-  lazy val trending: TweetList = googleTweets.union(appleTweets).descendingByRetweet
+  lazy val googleTrending = googleTweets.descendingByRetweet
+  lazy val appleTrending = appleTweets.descendingByRetweet
 }
 
 object Main extends App {
